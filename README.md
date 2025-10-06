@@ -132,13 +132,13 @@ To receive “Satisfactory”:
 
 ---
 
-## Authors
+## 10. Authors
 
 * Jackson Coldiron
 
 ---
 
-## License
+## 11. License
 
 * Code: MIT (recommended for reproducibility in coursework).
 * Text/figures: CC BY 4.0.
