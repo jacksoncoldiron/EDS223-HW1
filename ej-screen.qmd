@@ -1,0 +1,72 @@
+---
+title: "Investigating EJ"
+subtitle: "Making maps"
+author: "Jackson Coldiron"
+date: 2025-10-6
+execute: 
+  echo: true
+format:
+  pdf:
+    toc: true
+    number-sections: true
+code-fold: true
+editor: visual
+---
+
+## Introduction
+
+This report uses EPA’s EJScreen (2023) block‐group data to explore patterns of environmental (in)justice in **Oakland, CA**. The goal is to produce two clear, accessible maps—built in R with `tmap` and `sf`—that communicate one cohesive story about how environmental burdens and social vulnerability intersect. I follow MEDS mapping best practices (informative titles, legible legends with units, appropriate continuous/discrete color scales, and scale/orientation cues) and summarize key takeaways in a brief narrative. EJScreen provides nationally consistent indicators but carries important caveats (screening—not a risk assessment; method and coverage limitations noted in the technical documentation). Results here are therefore exploratory and intended to support discussion and further inquiry, not definitive regulatory conclusions.
+
+#### Data Overview
+
+
+#### Goal:
+  Map 1: Superfund (NPL) proximity (choropleth) + hospitals (points) in Oakland.
+          Investigate whether the highest-toxicity areas have the least
+          hospital accessibility (distances / counts within buffers).
+   Map 2: Flood risk (choropleth) + parks/green space (polygons/points).
+           Show limited green space in the most flood-vulnerable area (West Oakland / Acorn).
+
+# Key notes:
+#   - Keep data/ out of git: .gitignore should include "/data/"
+#   - Confirm exact EJScreen column names in EJSCREEN_2023_BG_Columns.xlsx
+#   - Use accessible color palettes and include scale bar + compass
+#   - Outline Acorn to focus the narrative
+# ------------------------------------------------------------------------------
+
+
+## Data Preparation
+```{r}
+# Load libraries
+library(tidyverse)
+library(sf)
+library(tmap)
+library(tmaptools)
+library(ggspatial)
+
+# Set tmap mode to plotting (static maps)
+tmap_mode("plot")
+
+# Load EJScreen block group data (2023)
+ej <- st_read(here::here("data", "EJSCREEN_2023_BG_StatePct_with_AS_CNMI_GU_VI.gdb"))
+
+# filter to a state you are interested in
+california <- ejscreen %>%
+  dplyr::filter(ST_ABBREV == "CA") 
+
+# filter to a county you are interested in
+santa_barbara <- ejscreen %>%
+  dplyr::filter(CNTY_NAME %in% c("Alameda County"))
+
+# find the average values for all variables within counties
+california_counties <- aggregate(california, by = list(california$CNTY_NAME), FUN = mean)
+
+
+```
+
+## Map 1: Superfund Proximity + Hospitals
+```{r}
+# Load Superfund sites data (from EPA)
+
+```
+
