@@ -2,23 +2,21 @@
 title: "Investigating Environmental (in)Justice in Oakland"
 subtitle: "Spatial visualizations of Hazardouse Waste and Superfund Proximity using EPA's EJScreen"
 author: "Jackson Coldiron"
-date: 2025-10-6
+date: 10-6-2025
 editor: visual
-format: 
-  html:
-    code-fold: true
-    embed-resources: true
-    theme: lumen
-    toc: true
+format:
+  pdf:
+    toc: false
+    number-sections: false
+    latex-engine: xelatex
 execute:
-  freeze: auto 
+  echo: true       # assignment wants code visible
   warning: false
   message: false
+code-fold: false   # must NOT fold code in the PDF
 ---
-```{r}
-knitr::include_graphics(here::here("data", "oakland1.jpg"))
-```
-<small>*Photo credit: Ray Saint Germain/Bay City News*</small>
+
+![](data/oakland1.jpg){fig-align="center" out-width="100%" fig-cap="Photo credit: Ray Saint Germain/Bay City News"}
 
 ## Introduction
 
@@ -96,7 +94,7 @@ labs_tsdf   <- c("<50 percentile","50 - 80 percentile",
 
 ```{r}
 #| label: fig-tsdf-oakland
-#| fig-cap: "**Concentrated Hazardous Waste Proximity in Oakland's Northwestern Neighborhoods.** This interactive map shows the percentiles for hazardous-waste facility proximity. It is an Environmental Burden Indicator that measures how close poeple might live to facility that handles hazardous waste. This indicicator calculates the total count of hazardous waste facilities (TSDFs and LQGs) within 5km (or nearest within 10km), divided by distance. Colors reflect percentile ranks (0–100) nationwide; higher percentiles (lighter colors) indicate greater combined risk from nearby RCRA Treatment, Storage, and Disposal Facilities. Use the basemap for context and hover/click a block group to see its attributes (GEOID, TSDF percentile, low-income percentile text)."
+#| fig-cap: "**Concentrated Hazardous Waste Proximity in Oakland's Northwestern Neighborhoods.** This interactive map shows the city of Oakland and the percentiles for hazardous-waste facility proximity. It is an Environmental Burden Indicator that measures how close poeple might live to facility that handles hazardous waste. This indicicator calculates the total count of hazardous waste facilities (TSDFs and LQGs) within 5km (or nearest within 10km), divided by distance. Colors reflect percentile ranks (0–100) nationwide; higher percentiles (lighter colors) indicate greater combined risk from nearby RCRA Treatment, Storage, and Disposal Facilities."
 #| fig-width: 11
 #| fig-height: 7
 #| fig-align: center
@@ -104,53 +102,35 @@ labs_tsdf   <- c("<50 percentile","50 - 80 percentile",
 #| message: false
 
 # Interactive map with a basemap
-tmap_mode("view")
+tmap_mode("plot")
 
-map1 <- tm_basemap("CartoDB.Positron") +
-  tm_shape(alameda_oak) +
-    tm_polygons(
-      col = "P_PTSDF",
-      style = "fixed", breaks = breaks_tsdf, labels = labs_tsdf,
-      palette = viridis::viridis(5),
-      legend.reverse = TRUE,
-      alpha = 0.75,
-      border.col = "grey70", lwd = 0.2,
-      title = "Hazardous Waste Proximity",
-      popup.vars = c(
-        "Block group" = "GEOID",
-        "TSDF proximity %ile" = "P_PTSDF",
-        "Low-income %ile (text)" = "T_LOWINCPCT"
-      )
-    ) +
-  tm_shape(st_boundary(oakland)) + tm_lines(lwd = 1) +
-  tm_view(set.zoom.limits = c(9, 15),
-          view.legend.position = c("right","bottom"))
+alameda_oak_3857 <- sf::st_transform(alameda_oak, 3857)
+oakland_3857     <- sf::st_transform(oakland, 3857)
+osm_oak          <- tmaptools::read_osm(oakland_3857, type = "osm", ext = 1.05)
 
-# Zoom to Oakland extent
-oak_wgs <- sf::st_transform(oakland, 4326)
-map1 <- map1 + tm_view(bbox = sf::st_bbox(oak_wgs))
-
-# Add scale bar + simple north-up arrow (Leaflet controls)
-library(leaflet)
-library(htmltools)
-
-leaf <- tmap::tmap_leaflet(map1) |>
-  addScaleBar(
-    position = "bottomleft",
-    options  = scaleBarOptions(imperial = FALSE)  # meters/km only
-  ) |>
-  addControl(
-    html = tags$div(
-      style = "background:rgba(255,255,255,0.85); padding:4px 8px;
-               border-radius:4px; border:1px solid #777;
-               font-weight:600; font-family:sans-serif;",
-      HTML("N &uarr;")   # simple north-up marker
-    ),
-    position = "bottomleft"
+# Build the static map (with basemap first)
+map1 <- tm_rgb(osm_oak) +                                                   # <- remove if no basemap
+tm_shape(alameda_oak_3857) +
+  tm_polygons(
+    col = "P_PTSDF",
+    style = "fixed", breaks = breaks_tsdf, labels = labs_tsdf,
+    palette = viridis::viridis(5),
+    legend.reverse = TRUE,
+    alpha = 0.80,                                                   # slight transparency over basemap
+    border.col = "grey70", lwd = 0.2,
+    title = "Hazardous Waste Proximity (percentile)"
+  ) +
+  tm_shape(sf::st_boundary(oakland_3857)) + tm_lines(lwd = 1) +
+  tm_compass(type = "arrow", position = c(0.08, 0.08), size = 2) +
+  tm_scale_bar(position = c(0.2, 0.05), text.size = 0.8) +
+  tm_layout(
+    legend.outside = TRUE,
+    legend.frame = FALSE,
+    frame = FALSE,
+    inner.margins = c(0.03, 0.03, 0.08, 0.03)
   )
 
-leaf  # render the interactive widget
-
+map1
 ```
 
 ## Map 2: Superfund Proximity Index
