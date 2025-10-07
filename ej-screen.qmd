@@ -1,72 +1,275 @@
 ---
-title: "Investigating EJ"
-subtitle: "Making maps"
+title: "Investigating Environmental (in)Justice in Oakland"
+subtitle: "Spatial visualizations of Hazardouse Waste and Superfund Proximity using EPA's EJScreen"
 author: "Jackson Coldiron"
 date: 2025-10-6
-execute: 
-  echo: true
-format:
-  pdf:
-    toc: true
-    number-sections: true
-code-fold: true
 editor: visual
+format: 
+  html:
+    code-fold: true
+    embed-resources: true
+    theme: lumen
+    toc: true
+execute:
+  freeze: auto 
+  warning: false
+  message: false
 ---
+```{r}
+knitr::include_graphics(here::here("data", "oakland1.jpg"))
+```
+<small>*Photo credit: Ray Saint Germain/Bay City News*</small>
 
 ## Introduction
 
 This report uses EPA’s EJScreen (2023) block‐group data to explore patterns of environmental (in)justice in **Oakland, CA**. The goal is to produce two clear, accessible maps—built in R with `tmap` and `sf`—that communicate one cohesive story about how environmental burdens and social vulnerability intersect. I follow MEDS mapping best practices (informative titles, legible legends with units, appropriate continuous/discrete color scales, and scale/orientation cues) and summarize key takeaways in a brief narrative. EJScreen provides nationally consistent indicators but carries important caveats (screening—not a risk assessment; method and coverage limitations noted in the technical documentation). Results here are therefore exploratory and intended to support discussion and further inquiry, not definitive regulatory conclusions.
 
 #### Data Overview
+This analysis uses the U.S. EPA’s **EJScreen 2023** block-group dataset, which pairs environmental burden indicators with a Demographic Index (mean of % low-income and % people of color) to produce percentile-ranked “EJ Index” scores (0–100). We focus on two proximity indicators: Hazardous Waste Proximity (Environmental Burden Indicator) and Superfund Proximity (Environmental Justice Index). All percentiles are nationally referenced (i.e., values reflect a block group’s position relative to the entire U.S., not just the Bay Area). The unit of analysis is the Census block group; for Oakland-specific views, Alameda County records are clipped to the Oakland city boundary. These indicators are screening metrics, not direct measures of exposure or health risk, and proximity does not imply causation. Results may be sensitive to boundary effects (e.g., facilities just outside the city line still influence nearby block groups) and to EJScreen’s underlying national datasets and methods. Basemap tiles (when shown) are used purely for geographic context.
 
-
-#### Goal:
-  Map 1: Superfund (NPL) proximity (choropleth) + hospitals (points) in Oakland.
-          Investigate whether the highest-toxicity areas have the least
-          hospital accessibility (distances / counts within buffers).
-   Map 2: Flood risk (choropleth) + parks/green space (polygons/points).
-           Show limited green space in the most flood-vulnerable area (West Oakland / Acorn).
-
-# Key notes:
-#   - Keep data/ out of git: .gitignore should include "/data/"
-#   - Confirm exact EJScreen column names in EJSCREEN_2023_BG_Columns.xlsx
-#   - Use accessible color palettes and include scale bar + compass
-#   - Outline Acorn to focus the narrative
-# ------------------------------------------------------------------------------
-
+*Data Citation:* United States Environmental Protection Agency. 2015. EJSCREEN. Retrieved: October 5, 2025 from https://www.epa.gov/ejscreen
 
 ## Data Preparation
+
 ```{r}
+#| message: false
+#| warning: false
+#| results: 'hide'
+
 # Load libraries
 library(tidyverse)
 library(sf)
 library(tmap)
 library(tmaptools)
 library(ggspatial)
+library(tigris)
 
 # Set tmap mode to plotting (static maps)
 tmap_mode("plot")
 
 # Load EJScreen block group data (2023)
-ej <- st_read(here::here("data", "EJSCREEN_2023_BG_StatePct_with_AS_CNMI_GU_VI.gdb"))
+ej <- st_read(here::here("data", "EJSCREEN_2023_BG_StatePct_with_AS_CNMI_GU_VI.gdb"), quiet = TRUE)
 
-# filter to a state you are interested in
-california <- ejscreen %>%
+# Filter to a state you are interested in
+california <- ej |>
   dplyr::filter(ST_ABBREV == "CA") 
 
-# filter to a county you are interested in
-santa_barbara <- ejscreen %>%
+# Filter to a county you are interested in
+alameda <- california |>
   dplyr::filter(CNTY_NAME %in% c("Alameda County"))
 
-# find the average values for all variables within counties
-california_counties <- aggregate(california, by = list(california$CNTY_NAME), FUN = mean)
-
+# --- CRS and data (assumes `alameda` already exists) ---
+alameda_3857 <- st_transform(alameda, 3857)
 
 ```
 
-## Map 1: Superfund Proximity + Hospitals
+## Map 1: Hazardous Waste Proximity in Oakland
+#### Data Manipulation
 ```{r}
-# Load Superfund sites data (from EPA)
+library(sf)
+library(dplyr)
+library(tigris)
+library(tmap)
+options(tigris_use_cache = TRUE)
+
+# 1) Oakland city boundary
+places_ca <- places(state = "CA", year = 2023, class = "sf")
+oakland <- places_ca |>
+  filter(NAME == "Oakland") |>
+  st_make_valid()
+
+# 2) Clip EJScreen to Oakland city limit
+alameda_oak <- alameda |>
+  st_transform(st_crs(oakland)) |>
+  st_intersection(oakland)
+
+# 3) Legend bins & labels
+breaks_tsdf <- c(0, 50, 80, 90, 95, 100)
+labs_tsdf   <- c("<50 percentile","50 - 80 percentile",
+                 "80 - 90 percentile","90 - 95 percentile","95 - 100 percentile")
+
+
 
 ```
+
+#### Map Execution
+
+```{r}
+#| label: fig-tsdf-oakland
+#| fig-cap: "**Concentrated Hazardous Waste Proximity in Oakland's Northwestern Neighborhoods.** This interactive map shows the percentiles for hazardous-waste facility proximity. It is an Environmental Burden Indicator that measures how close poeple might live to facility that handles hazardous waste. This indicicator calculates the total count of hazardous waste facilities (TSDFs and LQGs) within 5km (or nearest within 10km), divided by distance. Colors reflect percentile ranks (0–100) nationwide; higher percentiles (lighter colors) indicate greater combined risk from nearby RCRA Treatment, Storage, and Disposal Facilities. Use the basemap for context and hover/click a block group to see its attributes (GEOID, TSDF percentile, low-income percentile text)."
+#| fig-width: 11
+#| fig-height: 7
+#| fig-align: center
+#| warning: false
+#| message: false
+
+# Interactive map with a basemap
+tmap_mode("view")
+
+map1 <- tm_basemap("CartoDB.Positron") +
+  tm_shape(alameda_oak) +
+    tm_polygons(
+      col = "P_PTSDF",
+      style = "fixed", breaks = breaks_tsdf, labels = labs_tsdf,
+      palette = viridis::viridis(5),
+      legend.reverse = TRUE,
+      alpha = 0.75,
+      border.col = "grey70", lwd = 0.2,
+      title = "Hazardous Waste Proximity",
+      popup.vars = c(
+        "Block group" = "GEOID",
+        "TSDF proximity %ile" = "P_PTSDF",
+        "Low-income %ile (text)" = "T_LOWINCPCT"
+      )
+    ) +
+  tm_shape(st_boundary(oakland)) + tm_lines(lwd = 1) +
+  tm_view(set.zoom.limits = c(9, 15),
+          view.legend.position = c("right","bottom"))
+
+# Zoom to Oakland extent
+oak_wgs <- sf::st_transform(oakland, 4326)
+map1 <- map1 + tm_view(bbox = sf::st_bbox(oak_wgs))
+
+# Add scale bar + simple north-up arrow (Leaflet controls)
+library(leaflet)
+library(htmltools)
+
+leaf <- tmap::tmap_leaflet(map1) |>
+  addScaleBar(
+    position = "bottomleft",
+    options  = scaleBarOptions(imperial = FALSE)  # meters/km only
+  ) |>
+  addControl(
+    html = tags$div(
+      style = "background:rgba(255,255,255,0.85); padding:4px 8px;
+               border-radius:4px; border:1px solid #777;
+               font-weight:600; font-family:sans-serif;",
+      HTML("N &uarr;")   # simple north-up marker
+    ),
+    position = "bottomleft"
+  )
+
+leaf  # render the interactive widget
+
+```
+
+## Map 2: Superfund Proximity Index
+#### Data Manipulation
+```{r}
+# 1) West Oakland bbox (adjust as needed), then to 3857
+wo_wgs84 <- st_as_sfc(st_bbox(c(
+  xmin = -122.345,  # was -122.320  (more west, into the Bay/Port)
+  ymin =  37.780,   # was  37.795  (more south)
+  xmax = -122.255,  # was -122.270  (more east toward downtown)
+  ymax =  37.855    # was  37.835  (more north)
+), crs = 4326))
+
+wo_rect_3857 <- st_transform(wo_wgs84, 3857) # Transform bb of West Oakland to match alameda_3857
+wo_bb_3857 <- st_bbox(st_transform(wo_wgs84, 3857)) # Get bbox object for tmap
+wo_rect_3857 <- st_as_sfc(wo_bb_3857) # Convert bbox to sfc for plotting 
+
+# 2) Custom legend for Superfund proximity 
+breaks_pnpl <- c(0, 50, 80, 90, 95, 100)
+labs_pnpl   <- c("Less than 50 percentile",
+                 "50 - 80 percentile",
+                 "80 - 90 percentile",
+                 "90 - 95 percentile",
+                 "95 - 100 percentile")
+# 3) Formatting and colors
+# Viridis color palette (5 colors)
+pal_pnpl <- viridis::viridis(5)
+fill_col <- "P_D2_PNPL"
+
+# Global option: allow autoscaling of components if space is tight
+tmap_options(component.autoscale = TRUE)
+
+# 4) Create the two maps
+# (a) Alameda overview 
+map_a <-
+  tm_shape(alameda_3857) +
+    tm_polygons(
+      col = fill_col,
+      style = "fixed",
+      breaks = breaks_pnpl,
+      palette = pal_pnpl,
+      labels = labs_pnpl,
+      colorNA = "grey85",
+      textNA = "Data not available",
+      border.col = "grey70", lwd = 0,
+            legend.reverse = TRUE,
+      title = "EJ Index - Superfund Proximity",
+    ) +
+  # Add in the bb of West Oakland for reference
+  tm_shape(wo_rect_3857) +
+      tm_fill(alpha = 0) +                            
+      tm_borders(col = "black", lwd = 2) + 
+    tm_compass(type = "arrow", position = c("left", "bottom"), size = 1.5) +
+    tm_scale_bar(position = c(0.1,.08), text.size = 0.7) +
+    tm_layout(
+      frame = TRUE,
+      inner.margins = c(0.16,0.01,0.01,0.01),
+        legend.outside = FALSE,
+      legend.frame = FALSE,
+      legend.position = c("right", "top"),
+      legend.text.size = 0.75,
+      legend.title.size = 1,
+    ) +
+    tm_credits("a)", position = c("left","top"), just = c("left","top"), size = 1.0)
+
+
+# (b) West Oakland zoom 
+map_b <-
+  tm_shape(alameda_3857, bbox = wo_bb_3857) +
+    tm_polygons(
+      col = fill_col,
+      style = "fixed",
+      breaks = breaks_pnpl,
+      palette = pal_pnpl,
+      labels = labs_pnpl,
+      legend.reverse = TRUE,
+      colorNA = "grey85", textNA = "Data not available",
+      border.col = "grey70", lwd = 0.2,
+      legend.show = FALSE
+    ) +
+    tm_compass(type = "arrow", position = c("left","bottom"), size = 1.5) +
+    tm_scale_bar(position = c(0.05, 0.08), text.size = 0.7) +
+    tm_layout(
+      title = "",
+      inner.margins = c(0.24, 0.04, 0.04, 0.04), # extra bottom space for legend
+      frame = TRUE
+    ) +
+    tm_credits("b)", position = c("left","top"), just = c("left","top"), size = 1.0)
+
+
+```
+
+#### Map Execution
+```{r}
+#| label: fig-superfund
+#| fig-cap: "**EJ Index - Superfund proximity in Alameda County and West Oakland (EJScreen 2023).** Both panels illustrate the the EJ Index of Superfund proximity which combines the environmental burden indicator for Superfund proximity with the demographic index (an average of % low-income and % people of color) for each census block group. The environmental burden indicator for Superfund proximity measures how close people might live to sites listed on the National Priorities List (NPL). This indicator calculates the total count of sites proposed and listed on the NPL within 5 km (or nearest within 10 km), divided by distance. EJScreen presents Superfund proximity using percentile rank, ranging from 0 (lowest) to 100 (highest) with lighter colors indicating higher percentiles of of index score. Panel (a) shows Alameda County overall, with the West Oakland area outlined for reference. Panel (b) zooms into West Oakland, revealing that many of its block groups fall into the highest proximity percentiles (90-100%), indicating significant Superfund exposure risk."
+#| fig-width: 11
+#| fig-height: 6.5
+#| fig-align: center
+#| warning: false
+#| message: false
+
+tmap_mode("plot") # ensure plot mode
+
+map2 <- tmap_arrange(
+  map_a,                      # no legend/components
+  map_b,                      # carries legend, north arrow, scalebar
+  ncol = 2,
+  widths = c(0.38, 0.62),
+  outer.margins = c(0.02, 0.02, 0.02, 0.02)
+)
+
+map2
+
+```
+## Discussion
+For the first analysis, I mapped hazardous-waste facility proximity using only the Environmental Burden Indicator (EBI) from EJScreen. This metric summarizes how near each Census block group is to RCRA Treatment, Storage, and Disposal Facilities (and large quantity generators), weighting by distance and counting facilities within a 5 km radius (or the nearest within 10 km). Because EJScreen reports national percentiles (0–100), higher values indicate block groups that rank closer to hazardous-waste infrastructure compared to most places in the U.S. After clipping Alameda County to the Oakland city boundary, the highest percentiles concentrate in the northwest industrial corridor (e.g., West Oakland/port adjacency), with a gradient that generally declines moving eastward and into hillside neighborhoods. This view isolates environmental proximity alone—useful for locating potential hotspots, but it does not yet account for who lives there or underlying social vulnerability.
+
+To incorporate socioeconomic context, I then mapped the EJ Index for Superfund proximity, which combines the Superfund (NPL) proximity indicator with EJScreen’s Demographic Index (the mean of % low-income and % people of color). This shifts interpretation from “where facilities are near people” to “where proximity and social vulnerability coincide.” The Oakland results show many of the same West Oakland/Acorn tracts falling in the 90–100th percentiles, suggesting overlapping environmental burdens. This connection between hazardous-waste (ongoing industrial handling of hazardous materials) and Superfund (legacy contamination requiring long-term remediation) is plausible in waterfront and freight-oriented landscapes, where historic land uses and current logistics can co-occur. 
+
+Further work could incorporate examine site-level data to validate drivers within top-decile tracts. IT would also be interesting to layer additional stressors (e.g., traffic proximity, flood risk, or greenspace access) to assess cumulative impacts. Finally, this data is all from 2023, I would like to explore temporal changes over the decade.
 
