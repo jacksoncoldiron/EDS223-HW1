@@ -31,13 +31,20 @@
 ## 2. Repository structure
 
 EDS223-HW1
+
 │  README.md
+
 │  ej_screen.qmd
+
 │  ej_screen.pdf
+
 │
-├─ Rmd/               (optional) scratch notebooks / project files
+            
 └─ data/
-└─ ejscreen/       EJScreen inputs (NOT tracked; see .gitignore)
+
+     | EJ Screen data (not tracked
+
+     | Images and relevant supplementary data
 
 ---
 
